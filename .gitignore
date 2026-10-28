@@ -1,0 +1,5 @@
+data/prosperLoanData.csv
+data/homecredit_application_train.parquet
+__pycache__/
+*.pyc
+.venv/
