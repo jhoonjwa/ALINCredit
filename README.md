@@ -118,9 +118,12 @@ python download_data.py
 ## 실행 명령어
 
 ```bash
-# 공인시험 실행 (데이터 SHA-256 확인 -> 학습·평가 -> 공정성 DEO / 정책 반영 성능 평균 하락률 판정), 약 30초
-# -> results/test_result.json
+# 공인시험 실행 (데이터 SHA-256 확인 -> 학습된 모델로 테스트 데이터 추론 -> 공정성 DEO / 정책 반영 성능 평균 하락률 판정)
+# 모델: checkpoints/alincredit_seed1.joblib, 결과: results/test_result.json
 python run_test.py
+
+# 모델을 다시 학습하여 checkpoints/ 에 저장한 뒤 평가
+python run_test.py --train
 
 # MAF 형식 기본 실행 (credit_union, seed 1): metrics_orig / metrics_transf / 요약 출력, 약 1–2분
 python algorithms/inprocessing/ALINCredit.py
@@ -188,6 +191,7 @@ ALINCredit/
 ├── metrics/common_utils.py               # MAF 가이드의 compute_metrics (원본 그대로)
 ├── sample.py                             # aifData (MAF 가이드의 AIF360 StandardDataset 래퍼)
 ├── data/                                 # 신용 데이터 8종 + data/aif360/ (Adult, COMPAS, German 원본)
+├── checkpoints/alincredit_seed1.joblib   # 학습된 모델 (seed 1, run_test.py가 사용)
 ├── results/                              # evaluate.py 결과 (credit_union / german / adult / compas .json)
 ├── download_data.py
 ├── evaluate.py

@@ -9,6 +9,7 @@ sys.path.append(parent_dir)
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)  # pandas deprecation notices raised inside aif360 loaders
 
+import joblib
 import numpy as np
 import pandas as pd
 from aif360.algorithms.preprocessing.optim_preproc_helpers.data_preproc_functions import load_preproc_data_adult, load_preproc_data_german, load_preproc_data_compas
@@ -209,7 +210,7 @@ class ALINCredit:
         metrics_orig = self.compute_metrics(orig_dataset_test_pred)
 
         # proposed (reweighed ensemble, DEO-capped threshold)
-        model_fair = self.proposed_fit(self.dataset_orig_train, fair=True)
+        model_fair = self.model_fair = self.proposed_fit(self.dataset_orig_train, fair=True)
         self.thresh_fair = select_threshold(self.proposed_scores(self.dataset_orig_valid, model_fair), y_valid,
                                             self.sex_or_nan(self.dataset_orig_valid), self.deo_cap)
         transf_dataset_test_pred = self.predict(self.dataset_orig_test,
@@ -218,13 +219,36 @@ class ALINCredit:
         self.metrics_transf = metrics_transf
 
         # same ensemble without fairness correction, only used for the policy drop
-        model_ref = self.proposed_fit(self.dataset_orig_train, fair=False)
-        thresh_ref = select_threshold(self.proposed_scores(self.dataset_orig_valid, model_ref), y_valid)
+        model_ref = self.model_ref = self.proposed_fit(self.dataset_orig_train, fair=False)
+        thresh_ref = self.thresh_ref = select_threshold(self.proposed_scores(self.dataset_orig_valid, model_ref), y_valid)
         ref_dataset_test_pred = self.predict(self.dataset_orig_test,
             self.proposed_scores(self.dataset_orig_test, model_ref), thresh_ref)
         self.summary = self.summarize(transf_dataset_test_pred, ref_dataset_test_pred)
 
         return metrics_orig, metrics_transf
+
+    # ----- trained model save / inference only -----
+    def save_models(self, path):
+        """Save the trained proposed model and its reference model (with their thresholds)."""
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        joblib.dump({'seed': self.seed, 'deo_cap': self.deo_cap,
+                     'model_fair': self.model_fair, 'thresh_fair': self.thresh_fair,
+                     'model_ref': self.model_ref, 'thresh_ref': self.thresh_ref}, path, compress=3)
+
+    def run_inference(self, path):
+        """Evaluate saved models on the test split without training."""
+        ckpt = joblib.load(path)
+        if ckpt['seed'] != self.seed:
+            raise ValueError(f"checkpoint seed {ckpt['seed']} != seed {self.seed}")
+        self.model_fair, self.thresh_fair = ckpt['model_fair'], ckpt['thresh_fair']
+        self.model_ref, self.thresh_ref = ckpt['model_ref'], ckpt['thresh_ref']
+        transf_dataset_test_pred = self.predict(self.dataset_orig_test,
+            self.proposed_scores(self.dataset_orig_test, self.model_fair), self.thresh_fair)
+        self.metrics_transf = self.compute_metrics(transf_dataset_test_pred)
+        ref_dataset_test_pred = self.predict(self.dataset_orig_test,
+            self.proposed_scores(self.dataset_orig_test, self.model_ref), self.thresh_ref)
+        self.summary = self.summarize(transf_dataset_test_pred, ref_dataset_test_pred)
+        return self.metrics_transf
 
 
 if __name__ == "__main__":

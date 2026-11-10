@@ -3,7 +3,8 @@
     python run_test.py
 
 1) 시험 데이터 8개 파일의 SHA-256 해시를 출력하고 기준값과 비교한다.
-2) ALINCredit(seed 1, 70/15/15 분할)을 학습·평가한다.
+2) 학습된 ALINCredit 모델(checkpoints/alincredit_seed1.joblib)을 불러와 테스트 분할(seed 1, 70/15/15)을 평가한다.
+   (python run_test.py --train : 모델을 다시 학습하여 checkpoints/ 에 저장한 뒤 평가)
 3) 시험항목 2건의 값을 출력하고 기준 충족 여부를 판정한다.
      - [금융/신용2] 공정성 DEO x100 = |TPR(남) - TPR(여)| x 100        (기준: 5 미만)
      - [금융/신용2] 정책 반영 성능 평균 하락률 = (Acc_정책미반영 - Acc_정책반영) / Acc_정책미반영 x 100 (기준: 3 % 미만)
@@ -42,7 +43,10 @@ EXPECTED_SHA256 = {
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--train", action="store_true", help="모델을 다시 학습하고 checkpoints/ 에 저장")
     args = ap.parse_args()
+    ckpt = os.path.join(ROOT, "checkpoints", f"alincredit_seed{args.seed}.joblib")
+    train = args.train or not os.path.exists(ckpt)
 
     from evaluate import sha256
     from algorithms.inprocessing.alincredit_function import DATA_FILES, DATA_DIR, load_raw
@@ -64,11 +68,20 @@ def main():
         print(f"  {name:<16}{fn:<38}{h}  {'OK' if ok else '불일치'}")
     print(f"  -> 데이터 해시 {'일치' if hash_ok else '불일치'}")
 
-    print(f"\n[2/3] 모델 학습 및 평가 (seed {args.seed}) ...", flush=True)
     t0 = time.time()
     from algorithms.inprocessing.ALINCredit import ALINCredit
-    model = ALINCredit(dataset_name="credit_union", seed=args.seed, raw=load_raw())
-    model.run()
+    if train:
+        print(f"\n[2/3] 모델 학습 및 평가 (seed {args.seed}) ...", flush=True)
+        model = ALINCredit(dataset_name="credit_union", seed=args.seed, raw=load_raw())
+        model.run()
+        model.save_models(ckpt)
+        print(f"  학습 모델 저장: {ckpt}")
+    else:
+        print(f"\n[2/3] 학습된 모델로 테스트 데이터 평가 (seed {args.seed}) ...", flush=True)
+        print(f"  모델 파일: {ckpt}")
+        print(f"  SHA-256 : {sha256(ckpt)}")
+        model = ALINCredit(dataset_name="credit_union", seed=args.seed, raw=load_raw())
+        model.run_inference(ckpt)
     s = model.summary
     print(f"  완료 ({time.time() - t0:.0f} 초)")
 
@@ -86,7 +99,7 @@ def main():
           f"{'충족' if drop_pass else '미충족'}")
     print(line)
 
-    out = {"seed": args.seed, "deo_x100": round(deo, 4), "policy_drop_pct": round(drop, 4),
+    out = {"seed": args.seed, "mode": "train" if train else "inference","deo_x100": round(deo, 4), "policy_drop_pct": round(drop, 4),
            "acc_policy_applied": round(acc_fair, 4), "acc_policy_not_applied": round(acc_ref, 4),
            "deo_pass": deo_pass, "drop_pass": drop_pass, "data_sha256": hashes, "data_hash_ok": hash_ok}
     path = os.path.join(ROOT, "results", "test_result.json")
