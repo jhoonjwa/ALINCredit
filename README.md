@@ -118,6 +118,10 @@ python download_data.py
 ## 실행 명령어
 
 ```bash
+# 공인시험 실행 (데이터 SHA-256 확인 -> 학습·평가 -> 공정성 DEO / 정책 반영 성능 평균 하락률 판정), 약 30초
+# -> results/test_result.json
+python run_test.py
+
 # MAF 형식 기본 실행 (credit_union, seed 1): metrics_orig / metrics_transf / 요약 출력, 약 1–2분
 python algorithms/inprocessing/ALINCredit.py
 
@@ -187,6 +191,7 @@ ALINCredit/
 ├── results/                              # evaluate.py 결과 (credit_union / german / adult / compas .json)
 ├── download_data.py
 ├── evaluate.py
+├── run_test.py                           # 공인시험용 실행 스크립트
 ├── requirements.txt
 └── LICENSE
 ```
