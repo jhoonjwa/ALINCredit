@@ -3,4 +3,4 @@ data/homecredit_application_train.parquet
 __pycache__/
 *.pyc
 .venv/
-results/test_result.json
+results/test_result*.json

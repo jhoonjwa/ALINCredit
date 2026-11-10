@@ -1,14 +1,16 @@
 """ALINCredit 공인시험 실행 스크립트.
 
-    python run_test.py
+    python run_test.py --item 1    # 시험항목 1. 공정성 DEO x100
+    python run_test.py --item 2    # 시험항목 2. 정책 반영 성능 평균 하락률
+    python run_test.py             # 두 항목 모두
 
 1) 시험 데이터 8개 파일의 SHA-256 해시를 출력하고 기준값과 비교한다.
 2) 학습된 ALINCredit 모델(checkpoints/alincredit_seed1.joblib)을 불러와 테스트 분할(seed 1, 70/15/15)을 평가한다.
    (python run_test.py --train : 모델을 다시 학습하여 checkpoints/ 에 저장한 뒤 평가)
-3) 시험항목 2건의 값을 출력하고 기준 충족 여부를 판정한다.
+3) 선택한 시험항목의 값을 출력하고 기준 충족 여부를 판정한다.
      - [금융/신용2] 공정성 DEO x100 = |TPR(남) - TPR(여)| x 100        (기준: 5 미만)
      - [금융/신용2] 정책 반영 성능 평균 하락률 = (Acc_정책미반영 - Acc_정책반영) / Acc_정책미반영 x 100 (기준: 3 % 미만)
-결과는 results/test_result.json 에도 저장된다.
+결과는 results/test_result_item1.json, test_result_item2.json (두 항목 모두: test_result.json) 에도 저장된다.
 """
 import argparse
 import json
@@ -43,8 +45,11 @@ EXPECTED_SHA256 = {
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--item", type=int, choices=[1, 2], default=None,
+                    help="1: 공정성 DEO x100, 2: 정책 반영 성능 평균 하락률 (생략 시 두 항목 모두)")
     ap.add_argument("--train", action="store_true", help="모델을 다시 학습하고 checkpoints/ 에 저장")
     args = ap.parse_args()
+    title = {None: "공정성, 정책 반영 성능 평균 하락률", 1: "시험항목 1. 공정성", 2: "시험항목 2. 정책 반영 성능 평균 하락률"}[args.item]
     ckpt = os.path.join(ROOT, "checkpoints", f"alincredit_seed{args.seed}.joblib")
     train = args.train or not os.path.exists(ckpt)
 
@@ -53,7 +58,7 @@ def main():
 
     line = "=" * 70
     print(line)
-    print(" ALINCredit V1.0 공인시험  |  [금융/신용2] 공정성, 정책 반영 성능 평균 하락률")
+    print(f" ALINCredit V1.0 공인시험  |  [금융/신용2] {title}")
     print(line)
 
     print(f"[1/3] 시험 데이터 확인 (경로: {os.path.abspath(DATA_DIR)})")
@@ -90,19 +95,26 @@ def main():
     deo_pass, drop_pass = deo < DEO_LIMIT, drop < DROP_LIMIT
 
     print(f"\n[3/3] 시험 결과")
-    print(f"  하락률 산출용 테스트셋 전체 정확도: 정책 미반영 {acc_ref:.2f} %  /  정책 반영 {acc_fair:.2f} %")
-    print(f"  DEO 산출 대상: 테스트셋 중 성별 정보가 있는 데이터 전체")
-    print(line)
-    print(f"  시험항목 1. 공정성 DEO x100            = {deo:6.2f}   (기준 {DEO_LIMIT:g} 미만)    "
-          f"{'충족' if deo_pass else '미충족'}")
-    print(f"  시험항목 2. 정책 반영 성능 평균 하락률 = {drop:6.2f} % (기준 {DROP_LIMIT:g} % 미만)  "
-          f"{'충족' if drop_pass else '미충족'}")
-    print(line)
+    out = {"seed": args.seed, "mode": "train" if train else "inference",
+           "data_sha256": hashes, "data_hash_ok": hash_ok}
+    if args.item in (None, 1):
+        print(f"  DEO 산출 대상: 테스트셋 중 성별 정보가 있는 데이터 전체")
+        print(line)
+        print(f"  시험항목 1. 공정성 DEO x100 = {deo:.2f}   (기준 {DEO_LIMIT:g} 미만)   "
+              f"{'충족' if deo_pass else '미충족'}")
+        print(line)
+        out.update({"deo_x100": round(deo, 4), "deo_pass": deo_pass})
+    if args.item in (None, 2):
+        print(f"  테스트셋 전체 정확도: 정책 미반영 {acc_ref:.2f} %  /  정책 반영 {acc_fair:.2f} %")
+        print(line)
+        print(f"  시험항목 2. 정책 반영 성능 평균 하락률 = {drop:.2f} %   (기준 {DROP_LIMIT:g} % 미만)   "
+              f"{'충족' if drop_pass else '미충족'}")
+        print(line)
+        out.update({"policy_drop_pct": round(drop, 4), "acc_policy_applied": round(acc_fair, 4),
+                    "acc_policy_not_applied": round(acc_ref, 4), "drop_pass": drop_pass})
 
-    out = {"seed": args.seed, "mode": "train" if train else "inference","deo_x100": round(deo, 4), "policy_drop_pct": round(drop, 4),
-           "acc_policy_applied": round(acc_fair, 4), "acc_policy_not_applied": round(acc_ref, 4),
-           "deo_pass": deo_pass, "drop_pass": drop_pass, "data_sha256": hashes, "data_hash_ok": hash_ok}
-    path = os.path.join(ROOT, "results", "test_result.json")
+    name = "test_result.json" if args.item is None else f"test_result_item{args.item}.json"
+    path = os.path.join(ROOT, "results", name)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, ensure_ascii=False)

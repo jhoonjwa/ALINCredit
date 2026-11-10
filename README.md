@@ -119,8 +119,10 @@ python download_data.py
 
 ```bash
 # 공인시험 실행 (데이터 SHA-256 확인 -> 학습된 모델로 테스트 데이터 추론 -> 공정성 DEO / 정책 반영 성능 평균 하락률 판정)
-# 모델: checkpoints/alincredit_seed1.joblib, 결과: results/test_result.json
-python run_test.py
+# 모델: checkpoints/alincredit_seed1.joblib, 결과: results/test_result_item{1,2}.json
+python run_test.py --item 1    # 시험항목 1. 공정성 DEO x100
+python run_test.py --item 2    # 시험항목 2. 정책 반영 성능 평균 하락률
+python run_test.py             # 두 항목 모두 (results/test_result.json)
 
 # 모델을 다시 학습하여 checkpoints/ 에 저장한 뒤 평가
 python run_test.py --train
